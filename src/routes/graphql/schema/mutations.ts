@@ -172,7 +172,7 @@ export const MutationType = new GraphQLObjectType({
         });
 
         if (existingSubscription) {
-          throw new Error('User already subscribed to the Author');
+          throw new Error('User is already subscribed to the Author');
         }
 
         await prisma.subscribersOnAuthors.create({

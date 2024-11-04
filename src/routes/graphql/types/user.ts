@@ -19,54 +19,30 @@ export const UserType = new GraphQLObjectType({
     balance: { type: new GraphQLNonNull(GraphQLFloat) },
     profile: {
       type: ProfileType,
-      resolve: async (parent: { id: string }, args, { prisma }: PrismaContext) => {
-        return await prisma.profile.findUnique({
-          where: { userId: parent.id },
-        });
+      resolve: async ({ id }, args, { profileLoaderUserId }: PrismaContext) => {
+        return profileLoaderUserId.load(id as string);
       },
     },
     posts: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(PostType))),
-      resolve: async (parent, args, { prisma }: PrismaContext) => {
-        return await prisma.post.findMany({
-          where: { authorId: parent.id },
-        });
+      resolve: async ({ id }, args, { postsLoader }: PrismaContext) => {
+        return postsLoader.load(id as string);
       },
     },
     userSubscribedTo: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-      resolve: async (parent, args, { prisma }: PrismaContext) => {
-        const subscribedTo = await prisma.user.findMany({
-          where: {
-            subscribedToUser: {
-              some: {
-                subscriberId: parent.id,
-              },
-            },
-          },
-          include: {
-            subscribedToUser: true,
-          },
-        });
-
-        return subscribedTo;
+      resolve: async ({ userSubscribedTo }, args, { userLoader }: PrismaContext) => {
+        return userSubscribedTo.map((subscription) =>
+          userLoader.load(subscription.authorId as string),
+        );
       },
     },
     subscribedToUser: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-      resolve: async (parent, args, { prisma }: PrismaContext) => {
-        return await prisma.user.findMany({
-          where: {
-            userSubscribedTo: {
-              some: {
-                authorId: parent.id,
-              },
-            },
-          },
-          include: {
-            userSubscribedTo: true,
-          },
-        });
+      resolve: async ({ subscribedToUser }, args, { userLoader }: PrismaContext) => {
+        return subscribedToUser.map((subscribtion) =>
+          userLoader.load(subscribtion.subscriberId as string),
+        );
       },
     },
   }),

@@ -3,6 +3,7 @@ import { createGqlResponseSchema, gqlResponseSchema } from './schemas.js';
 import { graphql, parse, validate } from 'graphql';
 import depthLimit from 'graphql-depth-limit';
 import { schema } from './schema/schema.js';
+import { getGraphQLContext } from './utils.js';
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
   const { prisma } = fastify;
@@ -21,6 +22,7 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
       try {
         const { query: source, variables: variableValues } = req.body;
         const queryErrors = validate(schema, parse(source), [depthLimit(5)]);
+        const contextValue = getGraphQLContext(prisma);
 
         if (queryErrors.length) {
           return { errors: queryErrors };
@@ -30,7 +32,7 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
           schema,
           source,
           variableValues,
-          contextValue: { prisma },
+          contextValue,
         });
       } catch (error) {
         return {

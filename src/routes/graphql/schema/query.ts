@@ -1,4 +1,5 @@
 import { GraphQLList, GraphQLNonNull, GraphQLObjectType } from 'graphql';
+import { parse, ResolveTree, simplify } from 'graphql-parse-resolve-info';
 import { PrismaContext } from '../types/context.js';
 import { MemberType, MemberIdEnum } from '../types/member.js';
 import { PostType } from '../types/post.js';
@@ -19,8 +20,14 @@ export const QueryType = new GraphQLObjectType({
   fields: {
     memberTypes: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(MemberType))),
-      resolve: async (source, args, { prisma }: PrismaContext) => {
-        return await prisma.memberType.findMany();
+      resolve: async (source, args, { prisma, memberTypeLoader }: PrismaContext) => {
+        const memberTypes = await prisma.memberType.findMany();
+
+        memberTypes.forEach((memberType) =>
+          memberTypeLoader.prime(memberType.id, memberType),
+        );
+
+        return memberTypes;
       },
     },
     memberType: {
@@ -28,18 +35,24 @@ export const QueryType = new GraphQLObjectType({
       args: {
         id: { type: new GraphQLNonNull(MemberIdEnum) },
       },
-      resolve: async (source, { id }: MemberTypeArgs, { prisma }: PrismaContext) => {
-        return await prisma.memberType.findUnique({
-          where: {
-            id,
-          },
-        });
+      resolve: async (
+        source,
+        { id }: MemberTypeArgs,
+        { memberTypeLoader }: PrismaContext,
+      ) => {
+        return memberTypeLoader.load(id);
       },
     },
     posts: {
       type: new GraphQLList(PostType),
-      resolve: async (source, args, { prisma }: PrismaContext) => {
-        return await prisma.post.findMany();
+      resolve: async (source, args, { prisma, postLoader }: PrismaContext) => {
+        const posts = await prisma.post.findMany();
+
+        posts.forEach((post) => {
+          postLoader.prime(post.id, post);
+        });
+
+        return posts;
       },
     },
     post: {
@@ -47,18 +60,20 @@ export const QueryType = new GraphQLObjectType({
       args: {
         id: { type: new GraphQLNonNull(UUIDType) },
       },
-      resolve: async (source, { id }: GetPostArgs, { prisma }: PrismaContext) => {
-        return await prisma.post.findUnique({
-          where: {
-            id,
-          },
-        });
+      resolve: async (source, { id }: GetPostArgs, { postLoader }: PrismaContext) => {
+        return postLoader.load(id);
       },
     },
     profiles: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(ProfileType))),
-      resolve: async (source, args, { prisma }: PrismaContext) => {
-        return await prisma.profile.findMany();
+      resolve: async (source, args, { prisma, profileLoaderId }: PrismaContext) => {
+        const profiles = await prisma.profile.findMany();
+
+        profiles.forEach((profile) => {
+          profileLoaderId.prime(profile.id, profile);
+        });
+
+        return profiles;
       },
     },
     profile: {
@@ -66,38 +81,45 @@ export const QueryType = new GraphQLObjectType({
       args: {
         id: { type: new GraphQLNonNull(UUIDType) },
       },
-      resolve: async (source, { id }: { id: string }, { prisma }: PrismaContext) => {
-        return await prisma.profile.findUnique({
-          where: { id },
-        });
+      resolve: async (
+        source,
+        { id }: { id: string },
+        { profileLoaderId }: PrismaContext,
+      ) => {
+        return profileLoaderId.load(id);
       },
     },
 
     users: {
       type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-      resolve(parent, args, { prisma }) {
-        return prisma.user.findMany();
+      async resolve(source, args, { prisma, userLoader }, data) {
+        const { fields } = simplify(
+          parse(data) as ResolveTree,
+          new GraphQLList(UserType),
+        );
+
+        const users = await prisma.user.findMany({
+          include: {
+            subscribedToUser: 'subscribedToUser' in fields,
+            userSubscribedTo: 'userSubscribedTo' in fields,
+          },
+        });
+
+        users.forEach((user) => {
+          userLoader.prime(user.id, user);
+        });
+
+        return users;
       },
     },
 
     user: {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       type: UserType,
       args: {
         id: { type: new GraphQLNonNull(UUIDType) },
       },
-      async resolve(parent, { id }: { id: string }, { prisma }) {
-        return await prisma.user.findUnique({
-          where: { id },
-          include: {
-            profile: {
-              include: {
-                memberType: true,
-              },
-            },
-            posts: true,
-          },
-        });
+      async resolve(source, { id }: { id: string }, { userLoader }) {
+        return userLoader.load(id);
       },
     },
   },
